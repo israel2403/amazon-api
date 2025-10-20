@@ -1,0 +1,19 @@
+server:
+  port: ${SERVER_PORT:8761}
+
+spring:
+  application:
+    name: eureka-server
+  cloud:
+    service-registry:
+      auto-registration:
+        enabled: false   # <- critical: don't try to register the server itself
+
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+    service-url:
+      defaultZone: http://localhost:${SERVER_PORT:8761}/eureka
+  instance:
+    hostname: ${HOSTNAME:localhost}
