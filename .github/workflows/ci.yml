@@ -1,0 +1,64 @@
+name: CI — Build & Push Docker images
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+env:
+  REGISTRY: docker.io
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+  # Images will be tagged as: $DOCKERHUB_USERNAME/<service>:<sha> and, on default branch, also :latest
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [gateway, eureka-server, users, addresses-service]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+          cache: "maven"
+
+      - name: Build Maven module (skip tests)
+        run: mvn -B -DskipTests -pl ${{ matrix.service }} -am package
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      - name: Extract safe image name
+        id: img
+        run: |
+          SERVICE="${{ matrix.service }}"
+          SAFE_NAME="$(echo "$SERVICE" | tr '[:upper:]' '[:lower:]')"
+          echo "name=${{ env.DOCKERHUB_USERNAME }}/$SAFE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.img.outputs.name }}:${{ github.sha }}
+            ${{ steps.img.outputs.name }}:latest
+          build-args: |
+            SERVICE_NAME=${{ matrix.service }}
